@@ -12,7 +12,7 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.preprocessing import StandardScaler
 import numpy as np
 
-col_order = ['qty_mx_servers', 'qty_vowels_domain', 'time_domain_activation', 'qty_redirects', 'ttl_hostname', 'domain_spf', 'time_response', 'qty_nameservers', 'domain_length', 'time_domain_expiration', 'asn_ip', 'qty_slash_directory', 'tls_ssl_certificate', 'qty_dot_url', 'qty_dot_file', 'qty_dot_domain', 'qty_slash_url', 'file_length', 'length_url', 'directory_length']
+col_order = ['qty_mx_servers', 'qty_vowels_domain', 'time_domain_activation', 'time_response', 'ttl_hostname', 'qty_redirects', 'asn_ip', 'domain_length', 'qty_slash_directory', 'qty_nameservers', 'domain_spf', 'qty_dot_domain', 'time_domain_expiration', 'tls_ssl_certificate', 'qty_dot_url', 'qty_dot_file', 'file_length', 'length_url', 'qty_slash_url', 'qty_dot_directory']
 
 class AveragingModel(BaseEstimator, ClassifierMixin):
     def __init__(self, models):
@@ -82,7 +82,7 @@ def calculate_url_attributes(url):
         'qty_dot_url': url.count('.'),
         'length_url': len(url),
         'file_length': len(file) if file != -1 else 0,
-        'directory_length': len(directory) if directory != -1 else 0,
+        'qty_dot_directory': directory.count('.') if directory != -1 else 0,
         'qty_dot_file': file.count('.') if file != -1 and '.' in file else 0,
         'qty_slash_directory': directory.count('/') if directory != -1 else 0,
         'qty_dot_domain': domain.count('.') if domain != -1 else 0,
@@ -195,12 +195,16 @@ def predict(loaded_model, df: pd.DataFrame) -> str:
     # Or get probability predictions
     probability_predictions = loaded_model.predict_proba(df)
 
-    if predictions[0] == 1:
-        print("The URL is a phishing URL")
-        print ("The probability of the URL being a phishing URL is: ", probability_predictions[0][1])
+    if probability_predictions[0][1] < 0.52 and probability_predictions[0][1] > 0.48:
+        # If the probability is close to 0.5, the model is uncertain
+        print("\n\033[93m" + "The model is uncertain about the URL" + "\033[0m")
+
+    elif probability_predictions[0][1] >= 0.52:
+        print("\n\033[91m" + "The URL is likely a phishing URL" + "\033[0m")
+        print ("The probability of the URL being a phishing URL is:", f"{round(probability_predictions[0][1] * 100)}%")
     else:
-        print("The URL is not a phishing URL")
-        print ("The probability of the URL being a phishing URL is: ", probability_predictions[0][1])
+        print("\n\033[92m" + "The URL is likely not a phishing URL" + "\033[0m")
+        print ("The probability of the URL being a phishing URL is:", f"{round(probability_predictions[0][1] * 100)}%")
 
 def initTUI():
     print("\nPlease enter the URL you would like to evaluate")
@@ -216,15 +220,20 @@ def initTUI():
     return URL
 
 def main():
+    # Clear the terminal
+    os.system('cls' if os.name == 'nt' else 'clear')
     print("Welcome to the Phishing URL Detector")
     
     # Load the model
-    loaded_model = load('averaging_model.joblib')
+    loaded_model = load('Models/averaging_model.joblib')
     
     # Load the scaler
-    scaler = load('scaler.joblib')
+    scaler = load('Models/scaler.joblib')
     
     while True:
+        # Clear the terminal
+        os.system('cls' if os.name == 'nt' else 'clear')
+        
         URL = initTUI()
         df = retrieveData(URL)
         
@@ -232,10 +241,13 @@ def main():
         df = df[col_order]
         
         # Scale the data
-        df = scaler.transform(df)
+        df_scaled = scaler.transform(df)
         
-        predict(loaded_model, df)
-        print("Would you like to evaluate another URL? (y/n)")
+        # Add labels to the scaled data
+        df_scaled = pd.DataFrame(df_scaled, columns=col_order)
+        
+        predict(loaded_model, df_scaled)
+        print("\nWould you like to evaluate another URL? (y/n)")
         response = input()
         if response.lower() == 'n':
             break
